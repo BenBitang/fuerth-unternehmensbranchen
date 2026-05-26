@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fürth Unternehmens Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+    <div class="loading">
+        <p>🚀 Dashboard wird geladen...</p>
+    </div>
+
+    <div class="container hidden" id="dashboard">
+        <header>
+            <h1>🏢 Fürth Unternehmens Dashboard</h1>
+            <p class="subtitle">Umfassende Analyse aller registrierten Unternehmen in Fürth</p>
+        </header>
+
+        <!-- Statistik Karten -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Gesamtzahl Unternehmen</div>
+                <div class="stat-value" id="total-companies">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Anzahl Branchen</div>
+                <div class="stat-value" id="total-branches">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Größte Branche</div>
+                <div class="stat-value" id="largest-branch-count">0</div>
+                <div class="stat-label" id="largest-branch-name" style="margin-top: 5px;">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Durchschnitt pro Branche</div>
+                <div class="stat-value" id="avg-per-branch">0</div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-grid">
+            <div class="chart-container">
+                <div class="chart-title">📊 Top 15 Branchen (nach Unternehmenszahl)</div>
+                <canvas id="topBranchesChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <div class="chart-title">🥧 Verteilung Top 10 Branchen (Prozentzahl innerhalb der Top 10)</div>
+                <canvas id="branchDistributionChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Top 10 Branchen -->
+        <div class="table-container">
+            <h2 style="margin-bottom: 20px;">🏆 Top 10 Branchen (Details)</h2>
+            <div class="top-10" id="top-branches-details"></div>
+        </div>
+
+        <!-- Suchbare Tabelle -->
+        <div class="table-container">
+            <h2 style="margin-bottom: 20px;">🔍 Alle Unternehmen durchsuchen</h2>
+            
+            <div class="search-box">
+                <input type="text" id="company-search" placeholder="Nach Unternehmensname suchen...">
+                <select id="branch-filter">
+                    <option value="">-- Alle Branchen --</option>
+                </select>
+                <button onclick="searchCompanies()">Suchen</button>
+                <button onclick="resetSearch()">Zurücksetzen</button>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 50%;">Unternehmensname</th>
+                        <th style="width: 50%;">Branche</th>
+                    </tr>
+                </thead>
+                <tbody id="companies-table-body">
+                </tbody>
+            </table>
+
+            <div class="pagination" id="pagination"></div>
+        </div>
+
+        <div class="footer">
+            <p>📈 Datenquelle: service-on.fuerth.de | Letzte Aktualisierung: <span id="timestamp">-</span></p>
+        </div>
+    </div>
+
+    <script>
+        let allCompanies = [];
+        let filteredCompanies = [];
+        const itemsPerPage = 50;
+        let currentPage = 1;
+
+        // Daten laden
+        axios.get('furth_companies.json')
+            .then(response => {
+                allCompanies = response.data.companies;
+                filteredCompanies = [...allCompanies];
+                
+                // Dashboard anzeigen
+                document.querySelector('.loading').classList.add('hidden');
+                document.getElementById('dashboard').classList.remove('hidden');
+                
+                // Initialisieren
+                initializeDashboard();
+            })
+            .catch(error => {
+                console.error('Fehler beim Laden der Daten:', error);
+                document.querySelector('.loading').innerHTML = '<p>❌ Fehler beim Laden der Daten. Bitte stellen Sie sicher, dass die Datei furth_companies.json im gleichen Verzeichnis ist.</p>';
+            });
+
+        function initializeDashboard() {
+            // Statistiken berechnen
+            calculateStats();
+            
+            // Charts erstellen
+            createTopBranchesChart();
+            createBranchDistributionChart();
+            
+            // Top 10 Branchen anzeigen
+            displayTop10Branches();
+            
+            // Branch Filter füllen
+            populateBranchFilter();
+            
+            // Tabelle anzeigen
+            displayTable();
+        }
+
+        function calculateStats() {
+            const total = allCompanies.length;
+            const branches = {};
+            
+            allCompanies.forEach(company => {
+                branches[company.branch] = (branches[company.branch] || 0) + 1;
+            });
+            
+            const branchCount = Object.keys(branches).length;
+            const avgPerBranch = (total / branchCount).toFixed(1);
+            
+            const sortedBranches = Object.entries(branches).sort((a, b) => b[1] - a[1]);
+            const largestBranch = sortedBranches[0];
+            
+            document.getElementById('total-companies').textContent = total.toLocaleString('de-DE');
+            document.getElementById('total-branches').textContent = branchCount;
+            document.getElementById('largest-branch-count').textContent = largestBranch[1];
+            document.getElementById('largest-branch-name').textContent = truncate(largestBranch[0], 40);
+            document.getElementById('avg-per-branch').textContent = avgPerBranch;
+            
+            // Timestamp
+            const timestamp = new Date().toLocaleString('de-DE');
+            document.getElementById('timestamp').textContent = timestamp;
+            
+            return { branches, sortedBranches };
+        }
+
+        function createTopBranchesChart() {
+            const branches = {};
+            allCompanies.forEach(company => {
+                branches[company.branch] = (branches[company.branch] || 0) + 1;
+            });
+            
+            const sorted = Object.entries(branches)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 15);
+            
+            const ctx = document.getElementById('topBranchesChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: sorted.map(([name]) => truncate(name, 30)),
+                    datasets: [{
+                        label: 'Anzahl Unternehmen',
+                        data: sorted.map(([_, count]) => count),
+                        backgroundColor: [
+                            '#667eea', '#764ba2', '#f093fb', '#4facfe', '#00f2fe',
+                            '#43e97b', '#fa709a', '#fee140', '#30cfd0', '#330867',
+                            '#a8edea', '#fed6e3', '#ff9a56', '#5f27cd', '#00d2d3'
+                        ],
+                        borderWidth: 0,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false },
+                        datalabels: {
+                            anchor: 'end',
+                            align: 'end',
+                            font: { weight: 'bold' }
+                        }
+                    },
+                    scales: {
+                        x: { beginAtZero: true }
+                    }
+                },
+                plugins: [ChartDataLabels]
+            });
+        }
+
+        function createBranchDistributionChart() {
+            const branches = {};
+            allCompanies.forEach(company => {
+                branches[company.branch] = (branches[company.branch] || 0) + 1;
+            });
+            
+            const sorted = Object.entries(branches)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10);
+            
+            const ctx = document.getElementById('branchDistributionChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: sorted.map(([name]) => truncate(name, 25)),
+                    datasets: [{
+                        data: sorted.map(([_, count]) => count),
+                        backgroundColor: [
+                            '#667eea', '#764ba2', '#f093fb', '#4facfe', '#00f2fe',
+                            '#43e97b', '#fa709a', '#fee140', '#30cfd0', '#330867'
+                        ],
+                        borderWidth: 2,
+                        borderColor: 'white'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { padding: 15 }
+                        },
+                        datalabels: {
+                            formatter: (value, ctx) => {
+                                const sum = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = (value * 100 / sum).toFixed(1);
+                                return percentage + '%';
+                            },
+                            color: 'white',
+                            font: { weight: 'bold' }
+                        }
+                    }
+                },
+                plugins: [ChartDataLabels]
+            });
+        }
+
+        function displayTop10Branches() {
+            const branches = {};
+            allCompanies.forEach(company => {
+                branches[company.branch] = (branches[company.branch] || 0) + 1;
+            });
+            
+            const sorted = Object.entries(branches)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10);
+            
+            const html = sorted.map(([name, count], index) => `
+                <div class="top-branch">
+                    <div style="font-size: 1.1em; margin-bottom: 6px; color: var(--muted);">Rang ${index + 1}</div>
+                    <div class="top-branch-name">${name}</div>
+                    <div class="top-branch-count">${count}</div>
+                    <div style="color: #999; font-size: 0.9em; margin-top: 10px;">Unternehmen</div>
+                </div>
+            `).join('');
+            
+            document.getElementById('top-branches-details').innerHTML = html;
+        }
+
+        function populateBranchFilter() {
+            const branches = [...new Set(allCompanies.map(c => c.branch))].sort();
+            const filterSelect = document.getElementById('branch-filter');
+            
+            branches.forEach(branch => {
+                const option = document.createElement('option');
+                option.value = branch;
+                option.textContent = truncate(branch, 50);
+                filterSelect.appendChild(option);
+            });
+        }
+
+        function displayTable(page = 1) {
+            currentPage = page;
+            const start = (page - 1) * itemsPerPage;
+            const end = start + itemsPerPage;
+            const pageCompanies = filteredCompanies.slice(start, end);
+            
+            const tbody = document.getElementById('companies-table-body');
+            tbody.innerHTML = pageCompanies.map(company => `
+                <tr>
+                    <td>${company.name}</td>
+                    <td><span class="branch-badge">${truncate(company.branch, 50)}</span></td>
+                </tr>
+            `).join('');
+            
+            // Pagination
+            const totalPages = Math.ceil(filteredCompanies.length / itemsPerPage);
+            const paginationDiv = document.getElementById('pagination');
+            let paginationHtml = '';
+            
+            for (let i = 1; i <= totalPages; i++) {
+                const activeClass = i === page ? 'active' : '';
+                paginationHtml += `<button class="${activeClass}" onclick="displayTable(${i})">${i}</button>`;
+                if (i >= 10 && i < totalPages) {
+                    paginationHtml += '...';
+                    i = totalPages - 1;
+                }
+            }
+            
+            paginationDiv.innerHTML = paginationHtml || '';
+        }
+
+        function searchCompanies() {
+            const searchTerm = document.getElementById('company-search').value.toLowerCase();
+            const branchFilter = document.getElementById('branch-filter').value;
+            
+            filteredCompanies = allCompanies.filter(company => {
+                const matchName = company.name.toLowerCase().includes(searchTerm);
+                const matchBranch = !branchFilter || company.branch === branchFilter;
+                return matchName && matchBranch;
+            });
+            
+            displayTable(1);
+        }
+
+        function resetSearch() {
+            document.getElementById('company-search').value = '';
+            document.getElementById('branch-filter').value = '';
+            filteredCompanies = [...allCompanies];
+            displayTable(1);
+        }
+
+        function truncate(str, length) {
+            return str.length > length ? str.substring(0, length) + '...' : str;
+        }
+
+        // Event Listener
+        document.getElementById('company-search').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') searchCompanies();
+        });
+    </script>
+</body>
+</html>
