@@ -44,5 +44,10 @@ Dieses Projekt sammelt und visualisiert über 2.000 Unternehmen und deren Branch
 
 ---
 
-Viel Spaß beim Erkunden der Fürther Unternehmenslandschaft! 🚀
+Hier eine Screenshots der HTML-Seite:
 
+![Startseite](visualization/visual1.png)
+
+
+
+![Startseite heruntergescrollt](visualization/visual2.png)
