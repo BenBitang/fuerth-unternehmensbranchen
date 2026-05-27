@@ -44,7 +44,7 @@ Dieses Projekt sammelt und visualisiert über 2.000 Unternehmen und deren Branch
 
 ---
 
-Hier eine Screenshots der HTML-Seite:
+Hier Screenshots der HTML-Seite:
 
 ![Startseite](visualization/visual1.png)
 
